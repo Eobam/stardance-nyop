@@ -56,9 +56,8 @@
   // the count pops as it ticks up after each verdict.
   &__momentum {
     display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    justify-content: center;
+    flex-direction: column;
+    align-items: center;
     gap: var(--space-xs);
     margin-bottom: var(--space-l);
     padding: 0.6rem 1rem;
@@ -71,11 +70,50 @@
     border-radius: 10px;
   }
 
+  &__momentum-status {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: center;
+    gap: var(--space-xs);
+  }
+
   &__momentum-count {
     font-size: 1.5rem;
     font-weight: 800;
     font-variant-numeric: tabular-nums;
     animation: ship-review-pop 460ms ease-out;
+  }
+
+  // Per-ship payout factors: the base rate always shows, bonus/penalty
+  // badges only appear when their multiplier is actually active.
+  &__momentum-badges {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: var(--space-xs);
+  }
+
+  &__momentum-badge {
+    padding: 0.15rem 0.6rem;
+    color: var(--muted);
+    font-size: 0.8rem;
+    font-weight: 600;
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 999px;
+
+    &--bonus {
+      color: var(--color-brand-yellow);
+      background: var(--color-brand-yellow-soft);
+      border-color: var(--color-brand-yellow);
+    }
+
+    &--penalty {
+      color: var(--color-brand-salmon);
+      background: var(--color-brand-salmon-soft);
+      border-color: var(--color-brand-salmon);
+    }
   }
 
   @media (prefers-reduced-motion: reduce) {

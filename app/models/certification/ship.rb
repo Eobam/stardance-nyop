@@ -384,33 +384,89 @@ module Certification
       decided_today_count(user.id, now: now)
     end
 
-    MILESTONE_TIERS = [
-      { min: 40, multiplier: 2.0 },
-      { min: 20, multiplier: 1.75 },
-      { min: 10, multiplier: 1.5 },
-      { min: 5,  multiplier: 1.25 },
-      { min: 0,  multiplier: 1.0 }
-    ].freeze
-
-    def self.multiplier_for_milestone(total_count)
-      MILESTONE_TIERS.find { |t| total_count >= t[:min] }&.dig(:multiplier) || 1.0
-    end
-
-    def self.next_milestone(total_count)
-      thresholds = MILESTONE_TIERS.map { |t| t[:min] }.reject(&:zero?).sort
-      next_thresh = thresholds.find { |t| t > total_count }
-      return nil if next_thresh.nil?
-      { threshold: next_thresh, multiplier: multiplier_for_milestone(next_thresh), reviews_needed: next_thresh - total_count }
-    end
-
     def self.median_value(sorted)
       n = sorted.size
       n.odd? ? sorted[n / 2] : (sorted[n / 2 - 1] + sorted[n / 2]) / 2.0
     end
     private_class_method :median_value
 
-    # Stardust earned per completed review
-    REVIEW_BOUNTY = 1.25 # This will be updated once we add the project types.
+    # Dynamic payout system, ported from Shipwrights' dashboard
+    # (github.com/hackclub/shipwrights#93): base stardust per review varies by
+    # project category, then a stack of multiplicative bonuses applies on top.
+
+    # Base stardust per review, by project category. Scaled 1.25x off
+    # Shipwrights' rates so the "1.0" baseline category matches Stardance's
+    # prior flat rate.
+    BASE_RATES = {
+      "Web App" => 0.75, "Chat Bot" => 0.75,
+      "CLI" => 1.25, "Cargo" => 1.25, "Extension" => 1.25, "Hardware" => 1.25,
+      "Desktop App (Windows)" => 1.875, "Desktop App (Linux)" => 1.875,
+      "Desktop App (macOS)" => 1.875, "Minecraft Mods" => 1.875,
+      "Android App" => 1.875, "iOS App" => 1.875, "Other" => 1.875
+    }.freeze
+    DEFAULT_BASE_RATE = 1.25
+
+    # Top-3 daily reviewers (by decided count) get a rank bonus; everyone else,
+    # and anyone with no decided reviews yet today, gets 1x.
+    DAILY_RANK_MULTIPLIERS = [ 1.75, 1.5, 1.25 ].freeze
+
+    FIRST_REVIEW_MULTIPLIER = 1.5
+
+    DAILY_GRIND_TIERS = [
+      { min: 15, multiplier: 1.3 },
+      { min: 7,  multiplier: 1.2 }
+    ].freeze
+
+    OLD_PROJECT_TIERS = [
+      { min_hours: 96, multiplier: 1.5 },
+      { min_hours: 24, multiplier: 1.2 }
+    ].freeze
+
+    QUEUE_BACKLOG_AGE_HOURS = 24
+    QUEUE_BACKLOG_THRESHOLD = 10
+    QUEUE_BONUS_MULTIPLIER = 0.9
+
+    def self.base_rate_for(project_type)
+      BASE_RATES.fetch(project_type, DEFAULT_BASE_RATE)
+    end
+
+    # Position (0-indexed) among today's top 3 reviewers by decided count, or
+    # 1x if the reviewer hasn't decided anything today or isn't in the top 3.
+    def self.daily_rank_multiplier(user_id, now: Time.current)
+      return 1.0 if decided_today_count(user_id, now: now).zero?
+
+      top_three = where.not(reviewer_id: nil)
+        .decided
+        .where(decided_at: now.beginning_of_day..)
+        .group(:reviewer_id)
+        .order(Arel.sql("COUNT(*) DESC"), Arel.sql("reviewer_id ASC"))
+        .limit(3)
+        .count
+        .keys
+
+      pos = top_three.index(user_id)
+      pos ? DAILY_RANK_MULTIPLIERS[pos] : 1.0
+    end
+
+    def self.daily_grind_multiplier(prior_count_today)
+      DAILY_GRIND_TIERS.find { |t| prior_count_today >= t[:min] }&.dig(:multiplier) || 1.0
+    end
+
+    def self.old_project_multiplier(hours_pending)
+      OLD_PROJECT_TIERS.find { |t| hours_pending > t[:min_hours] }&.dig(:multiplier) || 1.0
+    end
+
+    # A small penalty on fresh reviews when the backlog of stale (>24h)
+    # pending ships is large, to keep reviewers from cherry-picking easy fresh
+    # ones while the queue backs up.
+    def self.queue_bonus_multiplier(hours_pending)
+      return 1.0 if hours_pending > QUEUE_BACKLOG_AGE_HOURS
+
+      backlog = software_only.where(status: :pending)
+        .where("certification_ship_reviews.created_at < ?", Time.current - QUEUE_BACKLOG_AGE_HOURS.hours)
+        .count
+      backlog > QUEUE_BACKLOG_THRESHOLD ? QUEUE_BONUS_MULTIPLIER : 1.0
+    end
 
     before_save :stamp_claimed_at, if: -> { will_save_change_to_reviewer_id? && reviewer_id.present? && claimed_at.nil? }
     before_save :stamp_decided_at, if: -> { will_save_change_to_status? && status_change&.last.in?(DECIDED_STATUSES) && decided_at.nil? }
@@ -475,9 +531,22 @@ module Certification
     end
 
     def assign_stardust_earned
-      total_count = Certification::Ship.decided_today_count(reviewer_id) + 1
-      multiplier = Certification::Ship.multiplier_for_milestone(total_count)
-      self.stardust_earned = (REVIEW_BOUNTY * multiplier) + (bonus_stardust || 0)
+      prior_count_today = Certification::Ship.decided_today_count(reviewer_id)
+      # created_at isn't populated yet when a record is decided in the same
+      # save it's created in (before_save runs ahead of the timestamp
+      # callback on create) - treat that as zero time pending, same as a
+      # ship decided the instant it was submitted.
+      hours_pending = created_at ? (Time.current - created_at) / 1.hour : 0
+
+      base = Certification::Ship.base_rate_for(project&.project_type)
+      total_multiplier =
+        Certification::Ship.daily_rank_multiplier(reviewer_id) *
+        (prior_count_today.zero? ? FIRST_REVIEW_MULTIPLIER : 1.0) *
+        Certification::Ship.daily_grind_multiplier(prior_count_today) *
+        Certification::Ship.old_project_multiplier(hours_pending) *
+        Certification::Ship.queue_bonus_multiplier(hours_pending)
+
+      self.stardust_earned = (base * total_multiplier) + (bonus_stardust || 0)
     end
 
     def stamp_claimed_at
