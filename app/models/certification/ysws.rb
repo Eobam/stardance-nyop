@@ -225,8 +225,7 @@ module Certification
     end
 
     # The DEVLOG_STARDUST_TIERS entry a reviewer on `count` lifetime devlogs is
-    # working toward, or nil once they're on the top tier. Mirrors
-    # Certification::Ship.next_milestone so both reviewer surfaces read alike.
+    # working toward, or nil once they're on the top tier.
     #   => { threshold:, rate:, current_rate:, devlogs_needed:, percent: }
     def self.next_stardust_tier(count)
       # The first tier's threshold is 0, so a non-negative count always sits at

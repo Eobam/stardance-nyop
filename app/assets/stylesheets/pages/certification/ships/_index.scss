@@ -292,6 +292,17 @@
     white-space: nowrap;
   }
 
+  // Daily-only: shows the payout multiplier a top-3 reviewer is currently earning.
+  &__rank-mult {
+    padding: 0.1rem 0.5rem;
+    color: var(--color-brand-yellow);
+    font-size: 0.75rem;
+    font-weight: 700;
+    background: var(--color-brand-yellow-soft);
+    border: 1px solid var(--color-brand-yellow);
+    border-radius: 999px;
+  }
+
   &__rank-count {
     color: var(--accent);
     font-weight: 700;

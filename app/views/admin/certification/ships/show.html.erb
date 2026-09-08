@@ -14,19 +14,34 @@
     <% end %>
 
     <div class="ship-review__momentum" role="status" aria-live="polite">
-      <% if @reviews_today.zero? %>
-        <span class="ship-review__momentum-label">First review of the day. Let's go! Complete <strong>5</strong> to unlock the <strong>1.25x</strong> multiplier.</span>
-      <% else %>
-        <span class="ship-review__momentum-count"><%= @reviews_today %></span>
-        <span class="ship-review__momentum-label">
-          reviewed today. Current multiplier: <strong><%= @current_multiplier %>x</strong>
-          <% if @next_milestone %>
-            · <%= @next_milestone[:reviews_needed] %> more to <strong><%= @next_milestone[:multiplier] %>x</strong>
-          <% else %>
-            · Max multiplier reached!
-          <% end %>
+      <div class="ship-review__momentum-status">
+        <% if @reviews_today.zero? %>
+          <span class="ship-review__momentum-label">First review of the day. Let's go! It earns a <strong><%= Certification::Ship::FIRST_REVIEW_MULTIPLIER %>x</strong> bonus.</span>
+        <% else %>
+          <span class="ship-review__momentum-count"><%= @reviews_today %></span>
+          <span class="ship-review__momentum-label">
+            reviewed today.
+            <% if @daily_rank_multiplier > 1 %>
+              Daily rank bonus: <strong><%= @daily_rank_multiplier %>x</strong>
+            <% end %>
+            <% if @daily_grind_multiplier > 1 %>
+              · Daily grind bonus: <strong><%= @daily_grind_multiplier %>x</strong>
+            <% end %>
+          </span>
+        <% end %>
+      </div>
+
+      <div class="ship-review__momentum-badges">
+        <span class="ship-review__momentum-badge">
+          Base: <%= number_with_precision(@ship_base_rate, precision: 2, strip_insignificant_zeros: true) %> ✦ (<%= @ship.project.project_type || "Unclassified" %>)
         </span>
-      <% end %>
+        <% if @ship_old_project_multiplier > 1 %>
+          <span class="ship-review__momentum-badge ship-review__momentum-badge--bonus">Old project bonus: <%= @ship_old_project_multiplier %>x</span>
+        <% end %>
+        <% if @ship_queue_bonus_multiplier < 1 %>
+          <span class="ship-review__momentum-badge ship-review__momentum-badge--penalty">Queue backlog: <%= @ship_queue_bonus_multiplier %>x</span>
+        <% end %>
+      </div>
     </div>
 
     <header class="ship-review__header">

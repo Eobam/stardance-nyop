@@ -79,7 +79,7 @@ class Admin::Certification::ShipsController < Admin::Certification::ApplicationC
     if internal_sw_dash_reviews_disabled? && (dash_url = ExternalDashboard::Client.certification_url(@ship.external_certification_id))
       return redirect_to dash_url, allow_other_host: true
     end
-    set_milestone_context
+    set_payout_context
   end
 
   def report_fraud
@@ -161,7 +161,7 @@ class Admin::Certification::ShipsController < Admin::Certification::ApplicationC
         load_hardware_review_context
         render "admin/certification/hardware_reviews/show", status: :unprocessable_entity
       else
-        set_milestone_context
+        set_payout_context
         render :show, status: :unprocessable_entity
       end
     end
@@ -197,10 +197,15 @@ class Admin::Certification::ShipsController < Admin::Certification::ApplicationC
     @ship = ::Certification::Ship.find(params[:id])
   end
 
-  def set_milestone_context
+  def set_payout_context
     @reviews_today = ::Certification::Ship.reviewed_today(current_user)
-    @current_multiplier = ::Certification::Ship.multiplier_for_milestone(@reviews_today)
-    @next_milestone = ::Certification::Ship.next_milestone(@reviews_today)
+    @daily_rank_multiplier = ::Certification::Ship.daily_rank_multiplier(current_user.id)
+    @daily_grind_multiplier = ::Certification::Ship.daily_grind_multiplier(@reviews_today)
+
+    @ship_base_rate = ::Certification::Ship.base_rate_for(@ship.project&.project_type)
+    hours_pending = (Time.current - @ship.created_at) / 1.hour
+    @ship_old_project_multiplier = ::Certification::Ship.old_project_multiplier(hours_pending)
+    @ship_queue_bonus_multiplier = ::Certification::Ship.queue_bonus_multiplier(hours_pending)
   end
 
   def ship_redirect_path

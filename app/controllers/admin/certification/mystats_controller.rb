@@ -26,8 +26,8 @@ class Admin::Certification::MystatsController < Admin::Certification::Applicatio
     @approval_rate = @total_count.zero? ? 0 : (@approved_count * 100.0 / @total_count).round
 
     @reviews_today = Certification::Ship.reviewed_today(current_user)
-    @current_multiplier = Certification::Ship.multiplier_for_milestone(@reviews_today)
-    @next_milestone = Certification::Ship.next_milestone(@reviews_today)
+    @daily_rank_multiplier = Certification::Ship.daily_rank_multiplier(current_user.id)
+    @daily_grind_multiplier = Certification::Ship.daily_grind_multiplier(@reviews_today)
 
     # adding reviews/payouts in one log
     @history_items = []
